@@ -221,7 +221,7 @@ void SDL_setPCSpeaker(byte val);
         parm [ah] \
         modify exact [al]
 
-void inline SDL_DoFX()
+static inline void SDL_DoFX()
 {
         if(pcSound)
         {
@@ -250,7 +250,7 @@ void inline SDL_DoFX()
 
 static void SDL_DigitizedDoneInIRQ(void);
 
-void inline SDL_DoFast()
+static inline void SDL_DoFast()
 {
         count_fx++;
         if(count_fx>=5)

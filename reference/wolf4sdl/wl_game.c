@@ -976,7 +976,7 @@ void ShowActStatus()
     int height = pictable[picnum].height;
     int destx = (screenWidth-scaleFactor*320)/2 + 9 * scaleFactor;
     int desty = screenHeight - (height - 4) * scaleFactor;
-    VL_MemToScreenScaledCoord(source, width, height, 9, 4, destx, desty, width - 18, height - 7);
+    VL_MemToScreenScaledCoordPart(source, width, height, 9, 4, destx, desty, width - 18, height - 7);
 
     ingame = false;
     DrawFace ();
@@ -1178,7 +1178,7 @@ void PlayDemo (int demonumber)
     NewGame (1,0);
     gamestate.mapon = *demoptr++;
     gamestate.difficulty = gd_hard;
-    length = READWORD(*(uint8_t **)&demoptr);
+    length = READWORD((uint8_t **)&demoptr);
     // TODO: Seems like the original demo format supports 16 MB demos
     //       But T_DEM00 and T_DEM01 of Wolf have a 0xd8 as third length size...
     demoptr++;

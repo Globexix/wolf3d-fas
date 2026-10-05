@@ -83,11 +83,11 @@ void Scale3DShaper(int x1, int x2, int shapenum, uint32_t flags, fixed ny1, fixe
 
                 line=(byte *)shape + cmdptr[i];
 
-                while((endy = READWORD(line)) != 0)
+                while((endy = READWORD(&line)) != 0)
                 {
                     endy >>= 1;
-                    newstart = READWORD(line);
-                    starty = READWORD(line) >> 1;
+                    newstart = READWORD(&line);
+                    starty = READWORD(&line) >> 1;
                     j=starty;
                     ycnt=j*pixheight;
                     screndy=(ycnt>>6)+upperedge;

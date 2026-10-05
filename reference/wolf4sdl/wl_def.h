@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #if defined(_arch_dreamcast)
 #	include <string.h>
 #	include "dc/dc_main.h"
@@ -1418,17 +1419,17 @@ static inline fixed FixedMul(fixed a, fixed b)
 #define lengthof(x) (sizeof(x) / sizeof(*(x)))
 #define endof(x)    ((x) + lengthof(x))
 
-static inline word READWORD(byte *&ptr)
+static inline word READWORD(byte **ptr)
 {
-    word val = ptr[0] | ptr[1] << 8;
-    ptr += 2;
+    word val = (*ptr)[0] | (*ptr)[1] << 8;
+    *ptr += 2;
     return val;
 }
 
-static inline longword READLONGWORD(byte *&ptr)
+static inline longword READLONGWORD(byte **ptr)
 {
-    longword val = ptr[0] | ptr[1] << 8 | ptr[2] << 16 | ptr[3] << 24;
-    ptr += 4;
+    longword val = (*ptr)[0] | (*ptr)[1] << 8 | (*ptr)[2] << 16 | (*ptr)[3] << 24;
+    *ptr += 4;
     return val;
 }
 
