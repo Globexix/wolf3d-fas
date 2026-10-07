@@ -1,11 +1,13 @@
 use "C" <wl_def.h>
 use "C" <stdio.h>
 
-fn check_alloc(p addr, what addr) void {
-    if p == null { Quit(c"Out of memory at %s", what) }
-}
-
 var PMPageDataSize usize = 0
+
+fn alloc(size usize, what addr) addr {
+    p addr = malloc(size)
+    if p == null { Quit(c"Out of memory at %s", what) }
+    return p
+}
 
 extern "C" {
     var PMPages addr = null
@@ -19,93 +21,72 @@ extern "C" {
 
     fn PM_Startup() void {
         fname arr[13, u8] = {}
-        strcat(&fname, c"vswap.")
-        strcat(&fname[0], &extension)
+        snprintf(&fname, len(fname), c"vswap.%s", &extension)
 
         file handle[FILE] = fopen(&fname, c"rb")
-        if file == null {
-            CA_CannotOpen(&fname)
-        }
+        if file == null { CA_CannotOpen(&fname) }
 
-        fread(&ChunksInFile, sizeof[word], 1, file)
-        fread(&PMSpriteStart, sizeof[word], 1, file)
-        fread(&PMSoundStart, sizeof[word], 1, file)
+        header arr[3, u16] = {}
+        fread(&header, sizeof[u16], 3, file)
+        ChunksInFile = zext[i32](header[0])
+        PMSpriteStart = zext[i32](header[1])
+        PMSoundStart = zext[i32](header[2])
 
-        pageOffsets addr = malloc(sext[usize](ChunksInFile + 1) * sizeof[i32])
-        check_alloc(pageOffsets, c"PM_Startup: pageOffsets")
-        fread(pageOffsets, sizeof[u32], sext[usize](ChunksInFile), file)
+        n usize = zext[usize](header[0])
+        spriteStart usize = zext[usize](header[1])
+        soundStart usize = zext[usize](header[2])
 
-        pageLengths addr = malloc(sext[usize](ChunksInFile) * sizeof[word])
-        check_alloc(pageLengths, c"PM_Startup: pageLengths")
-        fread(pageLengths, sizeof[word], sext[usize](ChunksInFile), file)
+        pageOffsets addr = alloc((n + 1) * sizeof[u32], c"PM_Startup: pageOffsets")
+        view offsets = pageOffsets[u32, ..]
+        fread(pageOffsets, sizeof[u32], n, file)
+
+        pageLengths addr = alloc(n * sizeof[u16], c"PM_Startup: pageLengths")
+        view lengths = pageLengths[u16, ..]
+        fread(pageLengths, sizeof[u16], n, file)
 
         fseek(file, 0, SEEK_END)
         fileSize i64 = ftell(file)
-        pageDataSize i64 = fileSize - zext[i64](pageOffsets[u32, 0])
+        offsets[n] = trunc[u32](fileSize)
+        dataStart u32 = offsets[0]
 
-        pageOffsets[u32, ChunksInFile] = trunc[u32](fileSize)
-
-        dataStart u32 = pageOffsets[u32, 0]
-
-        i i32 = 0
-
-        for ; i < ChunksInFile; i += 1 {
-            if pageOffsets[u32, i] == 0 { continue }
-            if pageOffsets[u32, i] < dataStart || zext[i64](pageOffsets[u32, i]) >= fileSize {
-                Quit(c"Illegal page offset for page %i: %u (filesize: %u)", i, pageOffsets[u32, i], fileSize)
+        for i usize = 0; i < n; i += 1 {
+            off u32 = offsets[i]
+            if off != 0 && (off < dataStart || zext[i64](off) >= fileSize) {
+                Quit(c"Illegal page offset for page %i: %u (filesize: %ld)", trunc[i32](i), off, fileSize)
             }
         }
 
         alignPadding u32 = 0
-        for i = PMSpriteStart; i < PMSoundStart; i += 1 {
-            if pageOffsets[u32, i] == 0 { continue }
-            offs u32 = pageOffsets[u32, i] - dataStart + alignPadding
-            if offs & 1 != 0 { alignPadding += 1 }
+        for i usize = spriteStart; i < soundStart; i += 1 {
+            if offsets[i] != 0 && (offsets[i] - dataStart + alignPadding) & 1 != 0 { alignPadding += 1 }
         }
+        if (offsets[n - 1] - dataStart + alignPadding) & 1 != 0 { alignPadding += 1 }
 
-        if (pageOffsets[u32, ChunksInFile - 1] - dataStart + alignPadding) & 1 != 0 {
-            alignPadding += 1
+        PMPageDataSize = bitcast[usize](fileSize - zext[i64](dataStart)) + zext[usize](alignPadding)
+        PMPageData = alloc(PMPageDataSize, c"PM_Startup: PMPageData")
+        PMPages = alloc((n + 1) * sizeof[addr], c"PM_Startup: PMPages")
+        view data = PMPageData[u8, ..]
+        view pages = PMPages[addr, ..]
+
+        pos usize = 0
+        for i usize = 0; i < n; i += 1 {
+            last bool = i == n - 1
+            if (i >= spriteStart && i < soundStart || last) && pos & 1 != 0 {
+                data[pos] = 0
+                pos += 1
+                if last { PMSoundInfoPagePadded = true }
+            }
+            pages[i] = &data[pos]
+
+            off u32 = offsets[i]
+            if off == 0 { continue }
+
+            size usize = zext[usize](if offsets[i + 1] == 0 { zext[u32](lengths[i]) } else { offsets[i + 1] - off })
+            fseek(file, zext[i64](off), SEEK_SET)
+            fread(&data[pos], 1, size, file)
+            pos += size
         }
-
-        PMPageDataSize = bitcast[usize](pageDataSize) + zext[usize](alignPadding)
-        PMPageData = malloc(PMPageDataSize)
-        check_alloc(PMPageData, c"PM_Startup: PMPageData")
-
-        PMPages = malloc(sext[usize](ChunksInFile + 1) * sizeof[addr])
-        check_alloc(PMPages, c"PM_Startup: PMPages")
-
-        ptr addr = PMPageData
-        for i = 0; i < ChunksInFile; i+=1 {
-            view pageOffset = pageOffsets[u32, i]
-
-            if i >= PMSpriteStart && i < PMSoundStart || i == ChunksInFile - 1 {
-                offs usize = addr_bits(ptr) - addr_bits(PMPageData)
-
-                if offs & 1 != 0 {
-                    ptr[u8] = 0
-                    ptr += 1
-                    if i == ChunksInFile - 1 { PMSoundInfoPagePadded = true }
-                }
-            }
-
-            PMPages[addr, i] = ptr
-
-            if pageOffset == 0 { continue }
-
-            size u32
-            if pageOffsets[u32, i + 1] == 0 {
-                size = zext[u32](pageLengths[u16, i])
-            }
-            else {
-                size = pageOffsets[u32, i + 1] - pageOffset
-            }
-
-            fseek(file, zext[i64](pageOffset), SEEK_SET)
-            fread(ptr, 1, zext[usize](size), file)
-            ptr += size
-        }
-
-        PMPages[addr, ChunksInFile] = ptr
+        pages[n] = &data[pos]
 
         free(pageLengths)
         free(pageOffsets)
