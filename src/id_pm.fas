@@ -28,13 +28,13 @@ extern "C" {
 
         header arr[3, u16] = {}
         fread(&header, sizeof[u16], 3, file)
-        ChunksInFile = zext[i32](header[0])
-        PMSpriteStart = zext[i32](header[1])
-        PMSoundStart = zext[i32](header[2])
+        ChunksInFile = header[0]
+        PMSpriteStart = header[1]
+        PMSoundStart = header[2]
 
-        n usize = zext[usize](header[0])
-        spriteStart usize = zext[usize](header[1])
-        soundStart usize = zext[usize](header[2])
+        n usize = header[0]
+        spriteStart usize = header[1]
+        soundStart usize = header[2]
 
         pageOffsets addr = alloc((n + 1) * sizeof[u32], c"PM_Startup: pageOffsets")
         view offsets = pageOffsets[u32, ..]
@@ -51,7 +51,7 @@ extern "C" {
 
         for i usize = 0; i < n; i += 1 {
             off u32 = offsets[i]
-            if off != 0 && (off < dataStart || zext[i64](off) >= fileSize) {
+            if off != 0 && (off < dataStart || off >= fileSize) {
                 Quit(c"Illegal page offset for page %i: %u (filesize: %ld)", trunc[i32](i), off, fileSize)
             }
         }
@@ -62,7 +62,7 @@ extern "C" {
         }
         if (offsets[n - 1] - dataStart + alignPadding) & 1 != 0 { alignPadding += 1 }
 
-        PMPageDataSize = bitcast[usize](fileSize - zext[i64](dataStart)) + zext[usize](alignPadding)
+        PMPageDataSize = bitcast[usize](fileSize - dataStart) + alignPadding
         PMPageData = alloc(PMPageDataSize, c"PM_Startup: PMPageData")
         PMPages = alloc((n + 1) * sizeof[addr], c"PM_Startup: PMPages")
         view data = PMPageData[u8, ..]
@@ -81,8 +81,8 @@ extern "C" {
             off u32 = offsets[i]
             if off == 0 { continue }
 
-            size usize = zext[usize](if offsets[i + 1] == 0 { zext[u32](lengths[i]) } else { offsets[i + 1] - off })
-            fseek(file, zext[i64](off), SEEK_SET)
+            size usize = if offsets[i + 1] == 0 { lengths[i] } else { zext[usize](offsets[i + 1]) - off }
+            fseek(file, off, SEEK_SET)
             fread(&data[pos], 1, size, file)
             pos += size
         }
